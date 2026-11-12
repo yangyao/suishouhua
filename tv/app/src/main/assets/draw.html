@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>随手画 · Web 画板</title>
+<style>
+  :root {
+    --bg: #FAF7F2;
+    --graphite: #2B2B2E;
+    --secondary: #8A8A90;
+    --blue: #3577F2;
+    --pill-bg: #E7EEFD;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--graphite);
+    font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column;
+    touch-action: none; user-select: none;
+  }
+  /* 顶栏 */
+  #topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; flex: 0 0 auto;
+  }
+  #topbar .title { font-size: 20px; font-weight: 700; }
+  #status {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--pill-bg); color: var(--blue);
+    border-radius: 999px; padding: 6px 14px; font-size: 14px;
+  }
+  #status .dot { width: 10px; height: 10px; border-radius: 50%; background: #B9B9BF; }
+  #status.on .dot { background: #2FAE5B; }
+  #status.off { background: #FDECEC; color: #C4453B; }
+  #topbar .spacer { flex: 1; }
+  .tbtn {
+    border: none; background: #fff; color: var(--graphite);
+    border-radius: 12px; padding: 9px 16px; font-size: 15px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  .tbtn:disabled { opacity: .35; }
+  .tbtn.danger { color: #C4453B; }
+  /* 画布区域 */
+  #stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; position: relative; min-height: 0; }
+  #stage canvas {
+    background: #fff; border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06);
+    touch-action: none;
+  }
+  /* 底部浮动工具栏 */
+  #toolbar {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,.96);
+    border-radius: 20px; padding: 10px 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.12);
+  }
+  .group { display: flex; align-items: center; gap: 6px; }
+  .sep { width: 1px; height: 26px; background: #E4E1DB; }
+  .tool {
+    width: 42px; height: 42px; border-radius: 12px; border: none;
+    background: transparent; font-size: 20px; color: var(--graphite);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tool.active { background: var(--pill-bg); color: var(--blue); }
+  .swatch {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid transparent; padding: 0;
+  }
+  .swatch.active { border-color: var(--graphite); }
+  .width {
+    width: 36px; height: 36px; border-radius: 10px; border: none;
+    background: transparent; display: flex; align-items: center; justify-content: center;
+  }
+  .width.active { background: var(--pill-bg); }
+  .width i { border-radius: 999px; background: var(--graphite); display: block; }
+  .width.active i { background: var(--blue); }
+  /* 提示条 */
+  #toast {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    background: rgba(43,43,46,.9); color: #fff;
+    padding: 8px 18px; border-radius: 999px; font-size: 14px;
+    display: none; z-index: 10;
+  }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <span class="title">随手画</span>
+    <span id="status"><span class="dot"></span><span id="statusText">连接中…</span></span>
+    <span class="spacer"></span>
+    <button class="tbtn" id="undoBtn" disabled>撤销</button>
+    <button class="tbtn" id="redoBtn" disabled>重做</button>
+    <button class="tbtn danger" id="clearBtn">清空</button>
+    <button class="tbtn" id="saveBtn">保存</button>
+  </div>
+
+  <div id="stage"><canvas id="cv"></canvas></div>
+
+  <div id="toolbar">
+    <div class="group">
+      <button class="tool active" id="tool-pen" title="画笔">✎</button>
+      <button class="tool" id="tool-marker" title="荧光笔">◉</button>
+      <button class="tool" id="tool-eraser" title="橡皮擦">⌫</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group" id="colors"></div>
+    <div class="sep"></div>
+    <div class="group" id="widths"></div>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 协议与连接 ----------
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+
+  var PING_INTERVAL = 5000;       // ping 作为可选链路探测，电视端无超时断开
+  var backoffMs = 1000;
+  var ws = null, paired = false, pingTimer = null, reconnectTimer = null;
+  var everConnectedAt = 0;
+
+  function setStatus(on, text) {
+    var el = document.getElementById('status');
+    el.classList.toggle('on', on);
+    el.classList.toggle('off', !on);
+    document.getElementById('statusText').textContent = text;
+  }
+  function toast(msg, ms) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.style.display = 'none'; }, ms || 2600);
+  }
+
+  function send(obj) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  }
+
+  function startPing() {
+    clearInterval(pingTimer);
+    pingTimer = setInterval(function () { send({ type: 'ping' }); }, PING_INTERVAL);
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    var delay = backoffMs;
+    backoffMs = Math.min(backoffMs * 2, 10000);
+    setStatus(false, '连接断开，正在重连…');
+    reconnectTimer = setTimeout(connect, delay);
+  }
+
+  function connect() {
+    clearTimeout(reconnectTimer); reconnectTimer = null;
+    try { ws = new WebSocket(WS_URL); } catch (e) { scheduleReconnect(); return; }
+
+    ws.onopen = function () {
+      sendHello();
+    };
+    ws.onmessage = function (ev) {
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      switch (msg.type) {
+        case 'paired':
+          paired = true;
+          backoffMs = 1000;
+          everConnectedAt = Date.now();
+          setStatus(true, '已连接电视');
+          startPing();
+          break;
+        case 'history':
+          hist.reset();
+          (msg.strokes || []).forEach(function (s) {
+            var st = new Stroke(s.id, s.tool, s.color, s.width);
+            (s.points || []).forEach(function (p) { if (p.length >= 2) st.points.push([p[0], p[1]]); });
+            hist.push(new OpStroke(st));
+          });
+          fullRedraw();
+          updateButtons();
+          break;
+        case 'rejected':
+          paired = false;
+          clearInterval(pingTimer);
+          if (msg.reason === 'in_use') {
+            setStatus(false, '电视已被其他手机连接');
+            toast('电视已被其他手机连接', 4000);
+          } else {
+            setStatus(false, '连接被拒绝');
+          }
+          break;
+        default:
+          break; // 未知 type 静默忽略
+      }
+    };
+    ws.onclose = function () {
+      clearInterval(pingTimer);
+      if (paired) paired = false;
+      // 电视端无超时断开；意外断开（网络抖动/页面关闭）指数退避自动重连
+      if (!retrying) scheduleReconnect();
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  function sendHello() {
+    send({ type: 'hello' });
+  }
+
+  var retrying = false;
+
+  // ---------- 数据模型（与电视端 StrokeHistory 一致） ----------
+  function Stroke(id, tool, color, width) {
+    this.id = id; this.tool = tool; this.color = color; this.width = width;
+    this.points = [];
+  }
+  function OpStroke(stroke) { this.kind = 'stroke'; this.stroke = stroke; }
+  function OpErase(id, stroke) { this.kind = 'erase'; this.id = id; this.stroke = stroke; }
+  function OpClear(cleared) { this.kind = 'clear'; this.cleared = cleared; }
+
+  var hist = {
+    visible: new Map(),   // id -> Stroke
+    undoStack: [],
+    redoStack: [],
+    push: function (op) {
+      this.undoStack.push(op);
+      this.redoStack.length = 0;
+    },
+    undo: function () {
+      var op = this.undoStack.pop();
+      if (!op) return false;
+      if (op.kind === 'stroke') this.visible.delete(op.stroke.id);
+      else if (op.kind === 'erase') this.visible.set(op.id, op.stroke);
+      else if (op.kind === 'clear') op.cleared.forEach(function (s) { this.visible.set(s.id, s); }, this);
+      this.redoStack.push(op);
+      return true;
+    },
+    redo: function () {
+      var op = this.redoStack.pop();
+      if (!op) return false;
+      if (op.kind === 'stroke') this.visible.set(op.stroke.id, op.stroke);
+      else if (op.kind === 'erase') this.visible.delete(op.id);
+      else if (op.kind === 'clear') this.visible.clear();
+      this.undoStack.push(op);
+      return true;
+    },
+    clearAll: function () {
+      if (this.visible.size === 0) return false;
+      this.push(new OpClear(Array.from(this.visible.values())));
+      this.visible.clear();
+      return true;
+    }
+  };
+
+  // ---------- 画布与渲染 ----------
+  var canvas = document.getElementById('cv');
+  var ctx = canvas.getContext('2d');
+  var stage = document.getElementById('stage');
+  var view = { x: 0, y: 0, w: 0, h: 0 }; // 16:9 letterbox 在页面中的位置（CSS px）
+
+  function layout() {
+    var sw = stage.clientWidth, sh = stage.clientHeight;
+    var aspect = 16 / 9, w = sw, h = sh;
+    if (sw / sh > aspect) w = sh * aspect; else h = sw / aspect;
+    w = Math.floor(w); h = Math.floor(h);
+    var dpr = window.devicePixelRatio || 1;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    view.w = w; view.h = h;
+    view.x = (sw - w) / 2;
+    view.y = (sh - h) / 2;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fullRedraw();
+  }
+  window.addEventListener('resize', layout);
+
+  function px(nx) { return nx * view.w; }
+  function py(ny) { return ny * view.h; }
+
+  function paintFor(stroke) {
+    var isMarker = stroke.tool === 'marker';
+    var base = view.w / 120 * stroke.width;
+    return {
+      color: stroke.color,
+      lineWidth: isMarker ? base * 1.8 : base,
+      alpha: isMarker ? 0.5 : 1
+    };
+  }
+
+  function strokePath(s) {
+    var p = new Path2D();
+    if (s.points.length === 0) return null;
+    if (s.points.length === 1) {
+      var st = paintFor(s);
+      p.arc(px(s.points[0][0]), py(s.points[0][1]), st.lineWidth / 2, 0, Math.PI * 2);
+      return { path: p, fill: true };
+    }
+    p.moveTo(px(s.points[0][0]), py(s.points[0][1]));
+    for (var i = 1; i < s.points.length - 1; i++) {
+      var cx = px(s.points[i][0]), cy = py(s.points[i][1]);
+      var mx = (cx + px(s.points[i + 1][0])) / 2, my = (cy + py(s.points[i + 1][1])) / 2;
+      p.quadraticCurveTo(cx, cy, mx, my);
+    }
+    var last = s.points[s.points.length - 1];
+    p.lineTo(px(last[0]), py(last[1]));
+    return { path: p, fill: false };
+  }
+
+  function drawStroke(s) {
+    var built = strokePath(s);
+    if (!built) return;
+    var st = paintFor(s);
+    ctx.save();
+    ctx.globalAlpha = st.alpha;
+    ctx.strokeStyle = st.color;
+    ctx.lineWidth = st.lineWidth;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (built.fill) { ctx.fillStyle = st.color; ctx.fill(built.path); }
+    else ctx.stroke(built.path);
+    ctx.restore();
+  }
+
+  function fullRedraw() {
+    ctx.clearRect(0, 0, view.w, view.h);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, view.w, view.h);
+    hist.visible.forEach(drawStroke);
+    if (current && currentStroke) drawStroke(currentStroke); // 进行中的笔画
+  }
+
+  // ---------- 工具状态 ----------
+  var COLORS = ['#3577F2', '#F28C28', '#4CAF50', '#E91E63', '#9C27B0'];
+  var WIDTHS = [1, 2, 3];
+  var state = { tool: 'pen', color: COLORS[0], width: 2 };
+
+  // ---------- 发送 ----------
+  function uuid() {
+    return 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  var pointBuf = [], flushTimer = null, current = null, currentStroke = null;
+
+  function flushPoints() {
+    flushTimer = null;
+    if (!pointBuf.length || !current) return;
+    send({ type: 'stroke_points', id: current, points: pointBuf });
+    pointBuf = [];
+  }
+
+  function normPoint(ev) {
+    var r = canvas.getBoundingClientRect();
+    var x = (ev.clientX - r.left) / r.width;
+    var y = (ev.clientY - r.top) / r.height;
+    return [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+  }
+
+  // 橡皮擦：命中检测最近的笔画
+  function hitStroke(pt) {
+    var threshold = 0.018;
+    var found = null;
+    hist.visible.forEach(function (s) {
+      var minD = Infinity;
+      s.points.forEach(function (p) {
+        var dx = p[0] - pt[0], dy = (p[1] - pt[1]) * (view.w / view.h) * (view.h / view.w);
+        // 简单归一化距离（纵横比修正对阈值影响可忽略，保持与手机一致按 0-1 空间）
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minD) minD = d;
+      });
+      if (minD < threshold) found = s;
+    });
+    return found;
+  }
+
+  function applyLocalErase(stroke) {
+    hist.visible.delete(stroke.id);
+    hist.push(new OpErase(stroke.id, stroke));
+    fullRedraw(); updateButtons();
+  }
+
+  canvas.addEventListener('pointerdown', function (ev) {
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    var pt = normPoint(ev);
+    if (state.tool === 'eraser') {
+      var hit = hitStroke(pt);
+      if (hit) {
+        send({ type: 'erase', strokeId: hit.id });
+        applyLocalErase(hit);
+      }
+      return;
+    }
+    current = uuid();
+    currentStroke = new Stroke(current, state.tool, state.color, state.width);
+    currentStroke.points.push(pt);
+    pointBuf = [pt];
+    fullRedraw();
+    send({ type: 'stroke_start', id: current, tool: state.tool, color: state.color, width: state.width });
+    if (!flushTimer) flushTimer = setTimeout(flushPoints, 16);
+  });
+
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!current) return;
+    ev.preventDefault();
+    var pt = normPoint(ev);
+    var pts = currentStroke.points;
+    var lp = pts[pts.length - 1];
+    if (Math.abs(pt[0] - lp[0]) < 0.0008 && Math.abs(pt[1] - lp[1]) < 0.0008) return;
+    pts.push(pt);
+    pointBuf.push(pt);
+    drawIncrement();
+    if (!flushTimer) flushTimer = setTimeout(flushPoints, 16);
+  });
+
+  function endStroke(ev) {
+    if (!current) return;
+    if (ev) ev.preventDefault();
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (pointBuf.length) send({ type: 'stroke_points', id: current, points: pointBuf });
+    pointBuf = [];
+    send({ type: 'stroke_end', id: current });
+    hist.push(new OpStroke(currentStroke));
+    hist.visible.set(currentStroke.id, currentStroke);
+    current = null; currentStroke = null;
+    fullRedraw(); updateButtons();
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+
+  function drawIncrement() {
+    if (!currentStroke) return;
+    drawStroke(currentStroke);
+  }
+
+  // ---------- 顶栏按钮 ----------
+  var undoBtn = document.getElementById('undoBtn');
+  var redoBtn = document.getElementById('redoBtn');
+  function updateButtons() {
+    undoBtn.disabled = hist.undoStack.length === 0;
+    redoBtn.disabled = hist.redoStack.length === 0;
+  }
+  undoBtn.addEventListener('click', function () {
+    send({ type: 'undo' });
+    if (hist.undo()) { fullRedraw(); updateButtons(); }
+  });
+  redoBtn.addEventListener('click', function () {
+    send({ type: 'redo' });
+    if (hist.redo()) { fullRedraw(); updateButtons(); }
+  });
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    if (!confirm('确定清空画板吗？')) return;
+    send({ type: 'clear' });
+    if (hist.clearAll()) { fullRedraw(); updateButtons(); }
+  });
+  document.getElementById('saveBtn').addEventListener('click', function () {
+    var out = document.createElement('canvas');
+    var dpr = window.devicePixelRatio || 1;
+    out.width = Math.round(view.w * dpr); out.height = Math.round(view.h * dpr);
+    var octx = out.getContext('2d');
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var saveCtx = ctx;
+    // 临时替换 ctx 画到导出画布
+    ctx = octx;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, view.w, view.h);
+    var cur = currentStroke; currentStroke = null;
+    hist.visible.forEach(drawStroke);
+    currentStroke = cur;
+    ctx = saveCtx;
+    var a = document.createElement('a');
+    a.download = 'suishouhua-' + Date.now() + '.png';
+    a.href = out.toDataURL('image/png');
+    a.click();
+  });
+
+  // ---------- 工具栏 ----------
+  var toolBtns = { pen: document.getElementById('tool-pen'), marker: document.getElementById('tool-marker'), eraser: document.getElementById('tool-eraser') };
+  Object.keys(toolBtns).forEach(function (t) {
+    toolBtns[t].addEventListener('click', function () {
+      state.tool = t;
+      Object.keys(toolBtns).forEach(function (k) { toolBtns[k].classList.toggle('active', k === t); });
+    });
+  });
+  var colorsEl = document.getElementById('colors');
+  COLORS.forEach(function (c, i) {
+    var b = document.createElement('button');
+    b.className = 'swatch' + (i === 0 ? ' active' : '');
+    b.style.background = c;
+    b.addEventListener('click', function () {
+      state.color = c;
+      Array.prototype.forEach.call(colorsEl.children, function (el) { el.classList.remove('active'); });
+      b.classList.add('active');
+    });
+    colorsEl.appendChild(b);
+  });
+  var widthsEl = document.getElementById('widths');
+  WIDTHS.forEach(function (w, i) {
+    var b = document.createElement('button');
+    b.className = 'width' + (w === 2 ? ' active' : '');
+    var bar = document.createElement('i');
+    var h = [4, 7, 11][i];
+    bar.style.width = h + 'px'; bar.style.height = h + 'px';
+    b.appendChild(bar);
+    b.addEventListener('click', function () {
+      state.width = w;
+      Array.prototype.forEach.call(widthsEl.children, function (el) { el.classList.remove('active'); });
+      b.classList.add('active');
+    });
+    widthsEl.appendChild(b);
+  });
+
+  // ---------- 启动 ----------
+  layout();
+  setStatus(false, '连接中…');
+  connect();
+})();
+</script>
+</body>
+</html>

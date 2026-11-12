@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Android
+tv/build/
+tv/app/build/
+tv/local.properties
+tv/.gradle/
+tv/captures/
+*.apk.idsig
+
+# iOS / Xcode
+ios/build/
+ios/DerivedData/
+ios/SuishouHua.xcodeproj/project.xcworkspace/
+ios/SuishouHua.xcodeproj/xcuserdata/
+*.xcuserstate
+
+# OpenCode / agent local state
+.opencode/
+.nojekyll
+
+# Python
+__pycache__/
+*.pyc

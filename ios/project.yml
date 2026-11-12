@@ -1,0 +1,68 @@
+name: SuishouHua
+options:
+  bundleIdPrefix: com.suishouhua
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_IDENTITY: ""
+targets:
+  SuishouHua:
+    type: application
+    platform: iOS
+    sources:
+      - SuishouHua
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.suishouhua.app
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: SuishouHua/Info.plist
+      properties:
+        CFBundleDisplayName: 随手画
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        NSCameraUsageDescription: "用于扫描电视上的二维码完成配对"
+        NSPhotoLibraryAddUsageDescription: "将画作保存到系统相册"
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+  SuishouHuaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: SuishouHua
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.suishouhua.tests
+        GENERATE_INFOPLIST_FILE: YES
+  SuishouHuaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: SuishouHua
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.suishouhua.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  SuishouHua:
+    build:
+      targets:
+        SuishouHua: all
+        SuishouHuaTests: [test]
+        SuishouHuaUITests: [test]
+    test:
+      targets:
+        - SuishouHuaTests
+        - SuishouHuaUITests

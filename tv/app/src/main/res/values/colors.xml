@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_warm_white">#FAF7F2</color>
+    <color name="text_graphite">#2B2B2E</color>
+    <color name="text_secondary">#8A8A90</color>
+    <color name="accent_blue">#3577F2</color>
+    <color name="pill_blue_bg">#E7EEFD</color>
+    <color name="green_connected">#2FAE5B</color>
+</resources>

@@ -1,0 +1,11 @@
+{
+  "tool": "image_gen built-in",
+  "type": "ui-mockup",
+  "prompt_summary": {
+    "shared": "Simple iPhone to Sony TV live drawing app. Original interface inspired by Inko white canvas, colorful ink and compact floating tools. Simplified Chinese, warm white, graphite text, blue accent. One phone and one TV. Finger drawing, shared 16:9 canvas. Illustrative QR codes.",
+    "01-iphone-ui.png": "Three screens: portrait connection home, portrait QR scanner, landscape drawing canvas. Pen, highlighter, eraser, colors, stroke sizes, undo, redo, export. Sun, two blue hills and green tree artwork.",
+    "02-tv-ui.png": "Two TV states: pairing with large QR and backup pairing code; connected full canvas with small connection status. No TV drawing toolbar.",
+    "03-features-and-flow.png": "Three-step journey: TV shows QR, phone scans, landscape phone drawing appears on TV. Six feature tiles: pen/highlighter, color/width, eraser, undo/redo, clear, save image."
+  },
+  "status": "Concept images only; illustrative QR codes. Feature sheet has minor tool placement differences from the phone UI sheet."
+}

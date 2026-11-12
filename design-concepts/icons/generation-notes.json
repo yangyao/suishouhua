@@ -1,0 +1,5 @@
+{
+  "tool": "image_gen built-in",
+  "prompt_summary": "Original square app icons for a simple iPhone-to-Sony-TV drawing app. Warm white opaque full-bleed background, bold cobalt blue flowing ink stroke and orange sun accent, no text or third-party logos, no baked-in outer rounded corners, generous padding, readable at small sizes. Phone: pen tip flowing into a wave. TV: rounded television outline containing a wave and sun, two integrated feet.",
+  "files": ["iphone-icon.png", "tv-icon.png"]
+}
