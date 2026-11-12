@@ -10,32 +10,31 @@ struct CanvasScreen: View {
     @State private var showExportDenied = false
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-
+        // 三段结构、互不重叠：顶栏（safe area 之下一行）→ 画布（弹性占满中间，
+        // 16:9 letterbox 居中，内部无任何 UI，即电视屏幕的完整镜像）→ 工具栏（下方独立一行）
+        VStack(spacing: 0) {
+            TopBar(
+                engine: model.engine,
+                connected: isConnected,
+                onUndo: { model.engine.undo() },
+                onRedo: { model.engine.redo() },
+                onClear: { showClearConfirm = true },
+                onExport: { exportCanvas() },
+                onLeave: { model.leaveCanvas() }
+            )
             GeometryReader { geo in
-                let frame = CanvasGeometry.letterboxFrame(contentAspect: 16.0 / 9.0, in: geo.frame(in: .local))
+                let frame = CanvasGeometry.letterboxFrame(
+                    contentAspect: 16.0 / 9.0,
+                    in: CGRect(origin: .zero, size: geo.size).insetBy(dx: 8, dy: 6))
                 CanvasRepresentable(engine: model.engine)
                     .frame(width: frame.width, height: frame.height)
                     .position(x: frame.midX, y: frame.midY)
                     .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
             }
-
-            VStack(spacing: 0) {
-                TopBar(
-                    engine: model.engine,
-                    connected: isConnected,
-                    onUndo: { model.engine.undo() },
-                    onRedo: { model.engine.redo() },
-                    onClear: { showClearConfirm = true },
-                    onExport: { exportCanvas() },
-                    onLeave: { model.leaveCanvas() }
-                )
-                Spacer()
-                ToolBar(engine: model.engine)
-                    .padding(.bottom, 8)
-            }
+            ToolBar(engine: model.engine)
+                .padding(.vertical, 6)
         }
+        .background(Theme.background.ignoresSafeArea())
         .alert("清空画板？", isPresented: $showClearConfirm) {
             Button("清空", role: .destructive) { model.engine.clearAll() }
             Button("取消", role: .cancel) {}
@@ -113,8 +112,8 @@ struct TopBar: View {
     let onLeave: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 Text("随手画")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Theme.ink)
@@ -127,16 +126,16 @@ struct TopBar: View {
                     .foregroundStyle(Theme.blue)
             }
             button(Image(systemName: "arrow.uturn.backward"), enabled: engine.canUndo, action: onUndo)
-                .font(.system(size: 17))
+                .font(.system(size: 16))
             button(Image(systemName: "arrow.uturn.forward"), enabled: engine.canRedo, action: onRedo)
-                .font(.system(size: 17))
+                .font(.system(size: 16))
             button(Image(systemName: "trash"), enabled: true, action: onClear)
-                .font(.system(size: 17))
+                .font(.system(size: 16))
             button(Image(systemName: "square.and.arrow.up"), enabled: true, action: onExport)
-                .font(.system(size: 17))
+                .font(.system(size: 16))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .frame(height: 44)
     }
 
     @ViewBuilder private var statusView: some View {
@@ -173,7 +172,7 @@ struct ToolBar: View {
     @ObservedObject var engine: DrawingEngine
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             toolButton("pencil.tip", tool: .pen)
             toolButton("highlighter", tool: .marker)
             eraserButton
@@ -190,8 +189,7 @@ struct ToolBar: View {
                 }
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
         .background(
             Capsule().fill(.white)
                 .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
@@ -210,9 +208,9 @@ struct ToolBar: View {
             Image(systemName: symbol)
                 .font(.system(size: 18))
                 .foregroundStyle(engine.tool == tool && !engine.isEraser ? Theme.blue : Theme.ink)
-                .frame(width: 40, height: 40)
+                .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 9)
                         .fill(engine.tool == tool && !engine.isEraser ? Theme.blue.opacity(0.14) : .clear)
                 )
         }
@@ -225,9 +223,9 @@ struct ToolBar: View {
             Image(systemName: "eraser")
                 .font(.system(size: 18))
                 .foregroundStyle(engine.isEraser ? Theme.blue : Theme.ink)
-                .frame(width: 40, height: 40)
+                .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 9)
                         .fill(engine.isEraser ? Theme.blue.opacity(0.14) : .clear)
                 )
         }

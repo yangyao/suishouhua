@@ -26,7 +26,12 @@ final class ManualPairUITests: XCTestCase {
         // 配对成功进入横屏画布，顶栏出现「已连接电视」
         XCTAssertTrue(app.staticTexts["已连接电视"].waitForExistence(timeout: 10))
         // 保持连接 >6s，让至少一次 5s 心跳 ping 发出（mock 服务器侧统计验证）
-        Thread.sleep(forTimeInterval: 6)
+        Thread.sleep(forTimeInterval: 2)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "canvas-landscape"
+        shot.lifetime = .keepAlways
+        add(shot)
+        Thread.sleep(forTimeInterval: 4)
     }
 
     func testUnreachableHostShowsWifiError() throws {
