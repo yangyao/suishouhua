@@ -1,3 +1,5 @@
+[English](README.en.md) | 简体中文
+
 <p align="center">
   <img src="design-concepts/icons/iphone-icon.png" width="88" alt="随手画应用图标">
 </p>
